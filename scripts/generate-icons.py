@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 ktsu-dev contributors
+# Copyright (c) 2023-2026 ktsu-dev contributors
 """Draws the NoSleep tray icons and the NuGet package icon.
 
 The mark is an eye: open and amber while NoSleep is holding an inhibitor, closed and grey while the
