@@ -39,7 +39,7 @@ NoSleep/
 
 ## Conventions
 
-- Tabs for indentation in C#; the file header is `// Copyright (c) 2026 ktsu-dev contributors`
+- Tabs for indentation in C#; the file header is `// Copyright (c) 2023-2026 ktsu-dev contributors` (it comes from `COPYRIGHT.md`, which CI regenerates)
 - `using` directives go inside the namespace, after the file-scoped namespace declaration
 - Warnings are errors and analysis runs at `10.0-all`, so public members need XML documentation and
   string comparisons need an explicit `StringComparison`
