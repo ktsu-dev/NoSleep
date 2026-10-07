@@ -8,6 +8,6 @@
     <PackageVersion Include="ktsu.Essentials.PersistenceProviders.ConfigHome" Version="2.10.2" />
     <PackageVersion Include="ktsu.Essentials.SerializationProviders.Json" Version="2.10.2" />
     <PackageVersion Include="ktsu.TrayApp" Version="1.4.0" />
-    <PackageVersion Include="Polyfill" Version="11.4.1" />
+    <PackageVersion Include="Polyfill" Version="11.4.3" />
   </ItemGroup>
 </Project>
