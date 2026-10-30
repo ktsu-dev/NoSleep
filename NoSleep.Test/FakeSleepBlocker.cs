@@ -4,6 +4,7 @@ namespace ktsu.NoSleep.Test;
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using ktsu.NoSleep.Contracts;
 
 /// <summary>
@@ -36,6 +37,11 @@ internal sealed class FakeSleepBlocker : ISleepBlocker
 	/// </summary>
 	public Exception? AcquireFailure { get; set; }
 
+	/// <summary>
+	/// Gets or sets how long <see cref="Acquire"/> takes, to widen the window a race needs.
+	/// </summary>
+	public TimeSpan AcquireDelay { get; set; } = TimeSpan.Zero;
+
 	/// <inheritdoc/>
 	public string Mechanism => "fake";
 
@@ -51,6 +57,11 @@ internal sealed class FakeSleepBlocker : ISleepBlocker
 		if (AcquireFailure is not null)
 		{
 			throw AcquireFailure;
+		}
+
+		if (AcquireDelay > TimeSpan.Zero)
+		{
+			Thread.Sleep(AcquireDelay);
 		}
 
 		AcquiredRequests.Add(request);

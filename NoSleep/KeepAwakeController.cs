@@ -107,12 +107,12 @@ public sealed class KeepAwakeController : IDisposable
 	/// <exception cref="ObjectDisposedException">The controller has been disposed.</exception>
 	/// <exception cref="PlatformNotSupportedException">The platform has no inhibitor.</exception>
 	/// <exception cref="SleepBlockException">The platform refused the inhibitor.</exception>
-	public void Enable() => SetActive(active: true);
+	public void Enable() => SetActive(_ => true);
 
 	/// <summary>
 	/// Stops inhibiting sleep. Does nothing if already inactive.
 	/// </summary>
-	public void Disable() => SetActive(active: false);
+	public void Disable() => SetActive(_ => false);
 
 	/// <summary>
 	/// Flips between enabled and disabled.
@@ -121,11 +121,7 @@ public sealed class KeepAwakeController : IDisposable
 	/// <exception cref="ObjectDisposedException">The controller has been disposed.</exception>
 	/// <exception cref="PlatformNotSupportedException">The platform has no inhibitor.</exception>
 	/// <exception cref="SleepBlockException">The platform refused the inhibitor.</exception>
-	public bool Toggle()
-	{
-		SetActive(!IsActive);
-		return IsActive;
-	}
+	public bool Toggle() => SetActive(current => !current);
 
 	/// <summary>
 	/// Sets whether the display should be kept awake too, re-taking the inhibitor when active.
@@ -196,7 +192,13 @@ public sealed class KeepAwakeController : IDisposable
 		GC.SuppressFinalize(this);
 	}
 
-	private void SetActive(bool active)
+	/// <summary>
+	/// Turns the controller on or off, deciding the new state from the current one under the same lock that
+	/// applies it, so a concurrent <see cref="Toggle"/> cannot act on a state another call has since changed.
+	/// </summary>
+	/// <param name="target">Maps the current state to the state wanted.</param>
+	/// <returns>The state this call left.</returns>
+	private bool SetActive(Func<bool, bool> target)
 	{
 		KeepAwakeStateChangedEventArgs change;
 
@@ -204,9 +206,10 @@ public sealed class KeepAwakeController : IDisposable
 		{
 			ObjectDisposedException.ThrowIf(disposed, this);
 
+			bool active = target(isActive);
 			if (isActive == active)
 			{
-				return;
+				return active;
 			}
 
 			if (active)
@@ -223,5 +226,6 @@ public sealed class KeepAwakeController : IDisposable
 		}
 
 		StateChanged?.Invoke(this, change);
+		return change.IsActive;
 	}
 }
