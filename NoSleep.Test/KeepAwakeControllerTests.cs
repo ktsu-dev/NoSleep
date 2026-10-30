@@ -67,18 +67,19 @@ public class KeepAwakeControllerTests
 	/// on (ktsu-dev/NoSleep#30).
 	/// </summary>
 	[TestMethod]
-	public void Toggle_ConcurrentCallsEachFlipOnceAndReportTheirOwnResult()
+	[DataRow(3)]
+	[DataRow(4)]
+	public void Toggle_ConcurrentCallsEachFlipOnceAndReportTheirOwnResult(int threads)
 	{
-		const int Threads = 4;
 		const int Trials = 200;
 
 		for (int trial = 0; trial < Trials; trial++)
 		{
 			using FakeSleepBlocker blocker = new() { AcquireDelay = TimeSpan.FromMilliseconds(1) };
 			using KeepAwakeController controller = new(blocker);
-			using Barrier start = new(Threads);
+			using Barrier start = new(threads);
 
-			Task<bool>[] toggles = [.. Enumerable.Range(0, Threads).Select(_ => Task.Factory.StartNew(
+			Task<bool>[] toggles = [.. Enumerable.Range(0, threads).Select(_ => Task.Factory.StartNew(
 				() =>
 				{
 					start.SignalAndWait();
@@ -90,9 +91,9 @@ public class KeepAwakeControllerTests
 			Task.WaitAll(toggles, TestContext.CancellationToken);
 
 			bool[] results = [.. toggles.Select(t => t.Result)];
-			Assert.AreEqual(Threads % 2 == 1, controller.IsActive, $"trial {trial}: final state");
-			Assert.AreEqual((Threads + 1) / 2, results.Count(r => r), $"trial {trial}: toggles that reported on");
-			Assert.AreEqual(Threads / 2, results.Count(r => !r), $"trial {trial}: toggles that reported off");
+			Assert.AreEqual(threads % 2 == 1, controller.IsActive, $"trial {trial}: final state");
+			Assert.AreEqual((threads + 1) / 2, results.Count(r => r), $"trial {trial}: toggles that reported on");
+			Assert.AreEqual(threads / 2, results.Count(r => !r), $"trial {trial}: toggles that reported off");
 		}
 	}
 
