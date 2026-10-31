@@ -4,6 +4,9 @@ namespace ktsu.NoSleep.Test;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 /// <summary>
@@ -17,6 +20,11 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 [TestClass]
 public class KeepAwakeControllerTests
 {
+	/// <summary>
+	/// Gets or sets the test context, whose cancellation token bounds the concurrency test.
+	/// </summary>
+	public TestContext TestContext { get; set; } = null!;
+
 	[TestMethod]
 	public void Enable_AcquiresTheCurrentRequest()
 	{
@@ -51,6 +59,42 @@ public class KeepAwakeControllerTests
 		controller.Disable();
 
 		Assert.AreEqual(0, blocker.ReleaseCount);
+	}
+
+	/// <summary>
+	/// Toggles racing on several threads must each flip the state once and report the state their own flip
+	/// left. Reading the state and flipping it under separate locks let two toggles both turn the controller
+	/// on (ktsu-dev/NoSleep#30).
+	/// </summary>
+	[TestMethod]
+	[DataRow(3)]
+	[DataRow(4)]
+	public void Toggle_ConcurrentCallsEachFlipOnceAndReportTheirOwnResult(int threads)
+	{
+		const int Trials = 200;
+
+		for (int trial = 0; trial < Trials; trial++)
+		{
+			using FakeSleepBlocker blocker = new() { AcquireDelay = TimeSpan.FromMilliseconds(1) };
+			using KeepAwakeController controller = new(blocker);
+			using Barrier start = new(threads);
+
+			Task<bool>[] toggles = [.. Enumerable.Range(0, threads).Select(_ => Task.Factory.StartNew(
+				() =>
+				{
+					start.SignalAndWait();
+					return controller.Toggle();
+				},
+				TestContext.CancellationToken,
+				TaskCreationOptions.LongRunning,
+				TaskScheduler.Default))];
+			Task.WaitAll(toggles, TestContext.CancellationToken);
+
+			bool[] results = [.. toggles.Select(t => t.Result)];
+			Assert.AreEqual(threads % 2 == 1, controller.IsActive, $"trial {trial}: final state");
+			Assert.AreEqual((threads + 1) / 2, results.Count(r => r), $"trial {trial}: toggles that reported on");
+			Assert.AreEqual(threads / 2, results.Count(r => !r), $"trial {trial}: toggles that reported off");
+		}
 	}
 
 	[TestMethod]
