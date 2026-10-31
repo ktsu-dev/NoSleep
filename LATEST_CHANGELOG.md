@@ -1,9 +1,7 @@
-## v1.1.1-pre.4 (prerelease)
+## v1.1.1 (patch)
 
-Changes since v1.1.1-pre.3:
+Changes since v1.1.0:
 
-- Bump the ktsu group with 1 update (dependabot[bot])
-- Bump MSTest.Sdk from 4.5.1 to 4.5.2 (dependabot[bot])
-- Bump the ktsu group with 1 update (dependabot[bot])
-- Bump Polyfill from 11.4.4 to 11.4.5 (dependabot[bot])
+- Run the concurrent Toggle test with an odd and an even thread count (Claude)
+- Decide and apply a Toggle under one lock, so concurrent toggles each flip once [patch] (Claude)
 
