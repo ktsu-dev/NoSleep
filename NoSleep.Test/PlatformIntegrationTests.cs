@@ -3,6 +3,7 @@
 namespace ktsu.NoSleep.Test;
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using ktsu.NoSleep.Contracts;
@@ -73,6 +74,46 @@ public class PlatformIntegrationTests
 	[TestMethod]
 	public void Find_ReturnsNullForACommandThatIsNotOnThePath() =>
 		Assert.IsNull(ExecutableLocator.Find("definitely-not-a-real-command-9f3a1"));
+
+	[TestMethod]
+	public void Find_SkipsANonExecutableMatchEarlierOnThePath()
+	{
+		if (OperatingSystem.IsWindows())
+		{
+			Assert.Inconclusive("Windows has no execute bit, so every match there counts as executable.");
+			return;
+		}
+
+		const string command = "nosleep-test-helper";
+		string root = Directory.CreateTempSubdirectory("nosleep-path-").FullName;
+
+		try
+		{
+			string shadow = Directory.CreateDirectory(Path.Combine(root, "shadow")).FullName;
+			string real = Directory.CreateDirectory(Path.Combine(root, "real")).FullName;
+
+			string stray = Path.Combine(shadow, command);
+			File.WriteAllText(stray, "#!/bin/sh\n");
+			File.SetUnixFileMode(stray, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+			// A directory named like the command is not a match either.
+			string directoryNamedLikeTheCommand = Path.Combine(root, "directory");
+			Directory.CreateDirectory(Path.Combine(directoryNamedLikeTheCommand, command));
+
+			string helper = Path.Combine(real, command);
+			File.WriteAllText(helper, "#!/bin/sh\n");
+			File.SetUnixFileMode(helper, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+			string path = string.Join(Path.PathSeparator, shadow, directoryNamedLikeTheCommand, real);
+
+			Assert.AreEqual(helper, ExecutableLocator.Find(command, path));
+			Assert.IsNull(ExecutableLocator.Find(command, string.Join(Path.PathSeparator, shadow, directoryNamedLikeTheCommand)));
+		}
+		finally
+		{
+			Directory.Delete(root, recursive: true);
+		}
+	}
 
 	[TestMethod]
 	[DataRow("")]
