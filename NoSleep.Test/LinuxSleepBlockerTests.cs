@@ -37,8 +37,8 @@ public class LinuxSleepBlockerTests
 
 		try
 		{
-			string pidFile = Path.Combine(root, "pids");
-			string helper = Path.Combine(root, "systemd-inhibit");
+			string pidFile = Path.Join(root, "pids");
+			string helper = Path.Join(root, "systemd-inhibit");
 			File.WriteAllText(helper, $"#!/bin/sh\necho $$ >> '{pidFile}'\nexec cat\n");
 			File.SetUnixFileMode(helper, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
