@@ -42,9 +42,19 @@ public sealed class LinuxSleepBlocker : ISleepBlocker
 	/// helpers available on this machine.
 	/// </summary>
 	public LinuxSleepBlocker()
+		: this(ExecutableLocator.Find(SystemdInhibit), ExecutableLocator.Find(GnomeSessionInhibit))
 	{
-		systemdInhibitPath = ExecutableLocator.Find(SystemdInhibit);
-		gnomeSessionInhibitPath = ExecutableLocator.Find(GnomeSessionInhibit);
+	}
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="LinuxSleepBlocker"/> class with the given helper paths.
+	/// </summary>
+	/// <param name="systemdInhibitPath">The <c>systemd-inhibit</c> executable, or <see langword="null"/> when there is none.</param>
+	/// <param name="gnomeSessionInhibitPath">The <c>gnome-session-inhibit</c> executable, or <see langword="null"/> when there is none.</param>
+	internal LinuxSleepBlocker(string? systemdInhibitPath, string? gnomeSessionInhibitPath)
+	{
+		this.systemdInhibitPath = systemdInhibitPath;
+		this.gnomeSessionInhibitPath = gnomeSessionInhibitPath;
 	}
 
 	/// <inheritdoc/>
@@ -106,6 +116,10 @@ public sealed class LinuxSleepBlocker : ISleepBlocker
 
 		lock (gate)
 		{
+			// Checked again under the lock: an Acquire that passed the check above and then queued behind
+			// Dispose would otherwise start holds on a disposed blocker that nothing would ever release.
+			ObjectDisposedException.ThrowIf(disposed, this);
+
 			ReleaseCore();
 
 			try
