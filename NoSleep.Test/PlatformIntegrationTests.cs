@@ -89,18 +89,18 @@ public class PlatformIntegrationTests
 
 		try
 		{
-			string shadow = Directory.CreateDirectory(Path.Combine(root, "shadow")).FullName;
-			string real = Directory.CreateDirectory(Path.Combine(root, "real")).FullName;
+			string shadow = Directory.CreateDirectory(Path.Join(root, "shadow")).FullName;
+			string real = Directory.CreateDirectory(Path.Join(root, "real")).FullName;
 
-			string stray = Path.Combine(shadow, command);
+			string stray = Path.Join(shadow, command);
 			File.WriteAllText(stray, "#!/bin/sh\n");
 			File.SetUnixFileMode(stray, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
 
 			// A directory named like the command is not a match either.
-			string directoryNamedLikeTheCommand = Path.Combine(root, "directory");
-			Directory.CreateDirectory(Path.Combine(directoryNamedLikeTheCommand, command));
+			string directoryNamedLikeTheCommand = Path.Join(root, "directory");
+			Directory.CreateDirectory(Path.Join(directoryNamedLikeTheCommand, command));
 
-			string helper = Path.Combine(real, command);
+			string helper = Path.Join(real, command);
 			File.WriteAllText(helper, "#!/bin/sh\n");
 			File.SetUnixFileMode(helper, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
