@@ -97,6 +97,87 @@ public class KeepAwakeControllerTests
 		}
 	}
 
+	/// <summary>
+	/// A display change and a reason change racing on two threads must both survive. Reading the request and
+	/// replacing it under separate locks let the later write drop the earlier one (ktsu-dev/NoSleep#39).
+	/// </summary>
+	[TestMethod]
+	public void SetKeepDisplayAwake_RacingAReasonUpdate_KeepsBothChanges()
+	{
+		const int Trials = 3000;
+		const string Reason = "Rendering";
+		TimeSpan stallTimeout = TimeSpan.FromSeconds(10);
+		int lost = 0;
+
+		// Two threads that stay alive for every trial and spin on shared counters to start each one together.
+		// Starting a thread or task per trial staggers the two by more than the gap a stale read needs, so
+		// the race almost never shows.
+		using KeepAwakeControllerPool pool = new(Trials);
+		int arrived = 0;
+		int finished = 0;
+		int released = -1;
+
+		void RunSide(Action<KeepAwakeController> change)
+		{
+			for (int trial = 0; trial < Trials; trial++)
+			{
+				Interlocked.Increment(ref arrived);
+				SpinWait.SpinUntil(() => Volatile.Read(ref released) >= trial);
+				change(pool[trial]);
+				Interlocked.Increment(ref finished);
+			}
+		}
+
+		// Background threads, so a side left spinning by a failed assertion cannot keep the test host alive.
+		Thread display = new(() => RunSide(controller => controller.SetKeepDisplayAwake(true))) { IsBackground = true };
+		Thread reason = new(() => RunSide(controller => controller.SetRequest(current => current with { Reason = Reason }))) { IsBackground = true };
+		display.Start();
+		reason.Start();
+
+		for (int trial = 0; trial < Trials; trial++)
+		{
+			int bothSides = (trial + 1) * 2;
+			Assert.IsTrue(SpinWait.SpinUntil(() => Volatile.Read(ref arrived) == bothSides, stallTimeout), $"trial {trial}: a side never arrived");
+			Volatile.Write(ref released, trial);
+			Assert.IsTrue(SpinWait.SpinUntil(() => Volatile.Read(ref finished) == bothSides, stallTimeout), $"trial {trial}: a side never finished");
+
+			SleepBlockRequest final = pool[trial].Request;
+			if (!final.KeepDisplayAwake || final.Reason != Reason)
+			{
+				lost++;
+			}
+		}
+
+		display.Join();
+		reason.Join();
+
+		Assert.AreEqual(0, lost, $"{lost} of {Trials} trials lost one of the two changes");
+	}
+
+	[TestMethod]
+	public void SetRequest_WithAnUpdate_AppliesItToTheRequestInForce()
+	{
+		using FakeSleepBlocker blocker = new();
+		using KeepAwakeController controller = new(blocker);
+		controller.SetKeepDisplayAwake(true);
+
+		controller.SetRequest(current => current with { Reason = "Rendering" });
+
+		Assert.IsTrue(controller.Request.KeepDisplayAwake);
+		Assert.AreEqual("Rendering", controller.Request.Reason);
+	}
+
+	[TestMethod]
+	public void SetRequest_WithAnUpdateThatReturnsNull_ThrowsAndKeepsTheRequest()
+	{
+		using FakeSleepBlocker blocker = new();
+		using KeepAwakeController controller = new(blocker);
+		SleepBlockRequest before = controller.Request;
+
+		Assert.ThrowsExactly<ArgumentNullException>(() => controller.SetRequest(_ => null!));
+		Assert.AreEqual(before, controller.Request);
+	}
+
 	[TestMethod]
 	public void Toggle_FlipsAndReportsTheNewState()
 	{
@@ -213,4 +294,34 @@ public class KeepAwakeControllerTests
 	[TestMethod]
 	public void Constructor_WithNullBlocker_Throws() =>
 		Assert.ThrowsExactly<ArgumentNullException>(() => new KeepAwakeController(null!));
+
+	/// <summary>
+	/// One controller per trial, created up front so the racing threads do no allocation between trials.
+	/// </summary>
+	private sealed class KeepAwakeControllerPool : IDisposable
+	{
+		private readonly FakeSleepBlocker[] blockers;
+		private readonly KeepAwakeController[] controllers;
+
+		public KeepAwakeControllerPool(int count)
+		{
+			blockers = [.. Enumerable.Range(0, count).Select(_ => new FakeSleepBlocker())];
+			controllers = [.. blockers.Select(blocker => new KeepAwakeController(blocker))];
+		}
+
+		public KeepAwakeController this[int index] => controllers[index];
+
+		public void Dispose()
+		{
+			foreach (KeepAwakeController controller in controllers)
+			{
+				controller.Dispose();
+			}
+
+			foreach (FakeSleepBlocker blocker in blockers)
+			{
+				blocker.Dispose();
+			}
+		}
+	}
 }
