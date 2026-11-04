@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Threading;
 
 /// <summary>
 /// A sleep inhibitor that exists for as long as a helper process stays alive.
@@ -73,10 +74,12 @@ public sealed class ChildProcessHold : IDisposable
 
 		Process process = new() { StartInfo = startInfo };
 
-		// Nothing consumes the helper's output, but an unread pipe eventually fills and blocks the writer,
-		// so drain both streams and drop what arrives.
+		// An unread pipe eventually fills and blocks the writer, so both streams are drained. Standard output
+		// is dropped. Standard error is kept while the helper starts up, because a helper that fails at once
+		// usually says why there, and that reason belongs in the exception.
+		StartupErrorOutput startupErrors = new();
 		process.OutputDataReceived += static (_, _) => { };
-		process.ErrorDataReceived += static (_, _) => { };
+		process.ErrorDataReceived += (_, e) => startupErrors.Add(e.Data);
 
 		try
 		{
@@ -92,12 +95,24 @@ public sealed class ChildProcessHold : IDisposable
 
 		if (process.WaitForExit(GetMilliseconds(StartupGrace)))
 		{
+			// The timed wait returns as soon as the process ends, possibly before its last lines of standard
+			// error have been read. The untimed wait also waits for both streams to reach end of input, which
+			// they do promptly now that the helper is gone.
+			process.WaitForExit();
 			int exitCode = process.ExitCode;
+			string errorOutput = startupErrors.Stop();
 			process.Dispose();
-			throw new SleepBlockException(string.Create(
+
+			string message = string.Create(
 				CultureInfo.InvariantCulture,
-				$"The inhibitor helper \"{fileName}\" exited immediately with code {exitCode}."));
+				$"The inhibitor helper \"{fileName}\" exited immediately with code {exitCode}.");
+
+			throw new SleepBlockException(errorOutput.Length == 0
+				? message
+				: $"{message} It reported: {errorOutput}");
 		}
+
+		_ = startupErrors.Stop();
 
 		return new ChildProcessHold(process) { Command = fileName, ProcessId = process.Id };
 	}
@@ -147,4 +162,78 @@ public sealed class ChildProcessHold : IDisposable
 	}
 
 	private static int GetMilliseconds(TimeSpan timeout) => (int)timeout.TotalMilliseconds;
+
+	/// <summary>
+	/// Keeps the most recent standard error lines a helper writes while it starts up, up to a fixed size.
+	/// </summary>
+	/// <remarks>
+	/// Lines arrive on a thread-pool thread while <see cref="Start"/> waits, so access is locked. Once stopped,
+	/// later lines are dropped, so a long-running helper cannot grow the buffer.
+	/// </remarks>
+	private sealed class StartupErrorOutput
+	{
+		/// <summary>
+		/// The most characters kept. When more arrive, the oldest are dropped, since the last lines a failing
+		/// helper writes are the ones most likely to say why it failed.
+		/// </summary>
+		private const int MaxLength = 4096;
+
+		private readonly Lock gate = new();
+		private readonly LinkedList<string> lines = new();
+		private int length;
+		private bool stopped;
+
+		/// <summary>
+		/// Records a line of standard error, unless recording has stopped.
+		/// </summary>
+		/// <param name="line">The line, or <see langword="null"/> at end of input.</param>
+		public void Add(string? line)
+		{
+			if (string.IsNullOrWhiteSpace(line))
+			{
+				return;
+			}
+
+			string trimmed = line.Trim();
+
+			lock (gate)
+			{
+				if (stopped)
+				{
+					return;
+				}
+
+				if (trimmed.Length > MaxLength)
+				{
+					trimmed = trimmed[^MaxLength..];
+				}
+
+				lines.AddLast(trimmed);
+				// Each line after the first costs one more character for the space that joins it to the last.
+				length += trimmed.Length + (lines.Count > 1 ? 1 : 0);
+
+				while (length > MaxLength && lines.First is { } oldest)
+				{
+					length -= oldest.Value.Length + (lines.Count > 1 ? 1 : 0);
+					lines.RemoveFirst();
+				}
+			}
+		}
+
+		/// <summary>
+		/// Stops recording and returns what was recorded.
+		/// </summary>
+		/// <returns>The recorded lines joined by spaces, or an empty string when there were none.</returns>
+		public string Stop()
+		{
+			lock (gate)
+			{
+				stopped = true;
+				string text = string.Join(' ', lines);
+				lines.Clear();
+				length = 0;
+				return text;
+			}
+		}
+	}
 }
