@@ -2,6 +2,8 @@
 
 Changes since v1.1.0:
 
+- Skip a non-executable PATH match when looking up a helper [patch] (#35) (matt-edmondson)
+- Refuse an Acquire that was queued behind Dispose [patch] (#36) (matt-edmondson)
 - Read and replace the request under one lock in SetKeepDisplayAwake [minor] (#42) (matt-edmondson)
 - Include an inhibitor helper's stderr when it exits immediately [patch] (#40) (matt-edmondson)
 - Add CompatibilitySuppressions.xml for the Polyfill 11.4.5 shim drift [patch] (#38) (matt-edmondson)
