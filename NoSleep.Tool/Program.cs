@@ -98,7 +98,7 @@ internal static class Program
 				["-r", "--reason"],
 				"text",
 				"Reason recorded with the inhibitor, shown by the platform's own\ntooling (pmset -g assertions, systemd-inhibit --list).",
-				reason => controller.SetRequest(controller.Request with { Reason = reason }))
+				reason => controller.SetRequest(current => current with { Reason = reason }))
 			.RefreshOn(refresh => controller.StateChanged += (_, _) => refresh())
 			.OnStart(Start)
 			.OnStop(controller.Disable)

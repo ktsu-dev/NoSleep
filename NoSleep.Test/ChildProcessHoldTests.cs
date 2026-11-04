@@ -71,6 +71,42 @@ public class ChildProcessHoldTests
 	}
 
 	[TestMethod]
+	public void Start_WhenTheHelperExitsImmediately_IncludesItsStandardErrorInTheMessage()
+	{
+		if (!IsUnix)
+		{
+			Assert.Inconclusive("The helper paths used by this test only exist on Unix.");
+			return;
+		}
+
+		SleepBlockException exception = Assert.ThrowsExactly<SleepBlockException>(
+			() => ChildProcessHold.Start(ImmediateExitHelper, ["-c", "echo boom >&2; exit 1"]));
+
+		StringAssert.Contains(exception.Message, "exited immediately with code 1", StringComparison.Ordinal);
+		StringAssert.Contains(exception.Message, "boom", StringComparison.Ordinal);
+	}
+
+	[TestMethod]
+	public void Start_WhenTheHelperFloodsStandardError_KeepsOnlyTheLastOfItInTheMessage()
+	{
+		if (!IsUnix)
+		{
+			Assert.Inconclusive("The helper paths used by this test only exist on Unix.");
+			return;
+		}
+
+		// 600 lines of filler (about 9 KB), then the line that explains the failure.
+		const string Script = "i=0; while [ $i -lt 600 ]; do echo filler-line-$i >&2; i=$((i+1)); done; echo the-real-reason >&2; exit 3";
+
+		SleepBlockException exception = Assert.ThrowsExactly<SleepBlockException>(
+			() => ChildProcessHold.Start(ImmediateExitHelper, ["-c", Script]));
+
+		StringAssert.Contains(exception.Message, "the-real-reason", StringComparison.Ordinal);
+		Assert.IsFalse(exception.Message.Contains("filler-line-0 ", StringComparison.Ordinal), "The oldest output should have been dropped");
+		Assert.IsLessThan(4096 + 200, exception.Message.Length, "The message should stay bounded");
+	}
+
+	[TestMethod]
 	public void Start_WithAMissingHelper_Throws()
 	{
 		SleepBlockException exception = Assert.ThrowsExactly<SleepBlockException>(

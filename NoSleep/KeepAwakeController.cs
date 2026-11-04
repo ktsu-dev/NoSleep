@@ -130,7 +130,7 @@ public sealed class KeepAwakeController : IDisposable
 	/// <exception cref="ObjectDisposedException">The controller has been disposed.</exception>
 	/// <exception cref="SleepBlockException">The platform refused the replacement inhibitor.</exception>
 	public void SetKeepDisplayAwake(bool keepDisplayAwake) =>
-		SetRequest(Request with { KeepDisplayAwake = keepDisplayAwake });
+		SetRequest(current => current with { KeepDisplayAwake = keepDisplayAwake });
 
 	/// <summary>
 	/// Replaces the request, re-taking the inhibitor when active so the change takes effect immediately.
@@ -143,11 +143,39 @@ public sealed class KeepAwakeController : IDisposable
 	{
 		Ensure.NotNull(newRequest);
 
+		SetRequest(_ => newRequest);
+	}
+
+	/// <summary>
+	/// Changes the request by computing a new one from the request in force, re-taking the inhibitor when
+	/// active so the change takes effect immediately.
+	/// </summary>
+	/// <param name="update">
+	/// Maps the request in force to the request to hold from now on. It runs under the controller's lock, so
+	/// no other change can land between reading the current request and replacing it. Keep it short, and do
+	/// not call back into the controller from it.
+	/// </param>
+	/// <example>
+	/// Change only the reason, keeping whatever display setting another thread may have just made:
+	/// <code>controller.SetRequest(current =&gt; current with { Reason = "Rendering" });</code>
+	/// </example>
+	/// <exception cref="ArgumentNullException">
+	/// <paramref name="update"/> is <see langword="null"/>, or returned <see langword="null"/>.
+	/// </exception>
+	/// <exception cref="ObjectDisposedException">The controller has been disposed.</exception>
+	/// <exception cref="SleepBlockException">The platform refused the replacement inhibitor.</exception>
+	public void SetRequest(Func<SleepBlockRequest, SleepBlockRequest> update)
+	{
+		Ensure.NotNull(update);
+
 		KeepAwakeStateChangedEventArgs change;
 
 		lock (gate)
 		{
 			ObjectDisposedException.ThrowIf(disposed, this);
+
+			SleepBlockRequest newRequest = update(request);
+			Ensure.NotNull(newRequest);
 
 			if (request == newRequest)
 			{

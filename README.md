@@ -241,6 +241,7 @@ The on/off switch behind both the tray icon and the console mode. Every mutation
 | `Toggle()` | `bool` | Flips the state and returns the state after the flip. |
 | `SetKeepDisplayAwake(bool)` | `void` | Sets whether to keep the display lit, re-taking the inhibitor when active. |
 | `SetRequest(SleepBlockRequest)` | `void` | Replaces the request, re-taking the inhibitor when active. |
+| `SetRequest(Func<SleepBlockRequest, SleepBlockRequest>)` | `void` | Computes the new request from the one in force under the controller's lock, so a concurrent change is not overwritten. |
 | `Dispose()` | `void` | Releases any inhibitor held, and the blocker when the controller created it. |
 
 #### Events
