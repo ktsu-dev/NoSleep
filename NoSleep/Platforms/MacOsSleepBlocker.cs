@@ -69,6 +69,10 @@ public sealed partial class MacOsSleepBlocker : ISleepBlocker
 
 		lock (gate)
 		{
+			// Checked again under the lock: an Acquire that passed the check above and then queued behind
+			// Dispose would otherwise start holds on a disposed blocker that nothing would ever release.
+			ObjectDisposedException.ThrowIf(disposed, this);
+
 			ReleaseCore();
 
 			try
