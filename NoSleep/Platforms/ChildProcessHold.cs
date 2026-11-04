@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 /// <summary>
 /// A sleep inhibitor that exists for as long as a helper process stays alive.
@@ -26,6 +27,16 @@ public sealed class ChildProcessHold : IDisposable
 {
 	private static readonly TimeSpan StartupGrace = TimeSpan.FromMilliseconds(250);
 	private static readonly TimeSpan GracefulExitTimeout = TimeSpan.FromSeconds(2);
+
+	/// <summary>
+	/// How long to wait, once a helper has exited, for the rest of its standard error to arrive.
+	/// </summary>
+	/// <remarks>
+	/// The pipe reaches end of input only when every process holding its write end has closed it. A helper
+	/// that started a background child before exiting leaves that child holding the pipe, so waiting for end
+	/// of input without a deadline would wait for as long as the child runs.
+	/// </remarks>
+	private static readonly TimeSpan ExitDrainTimeout = TimeSpan.FromSeconds(1);
 
 	private readonly Process process;
 	private bool disposed;
@@ -96,9 +107,10 @@ public sealed class ChildProcessHold : IDisposable
 		if (process.WaitForExit(GetMilliseconds(StartupGrace)))
 		{
 			// The timed wait returns as soon as the process ends, possibly before its last lines of standard
-			// error have been read. The untimed wait also waits for both streams to reach end of input, which
-			// they do promptly now that the helper is gone.
-			process.WaitForExit();
+			// error have been read. Wait a bounded time for the stream to reach end of input, rather than with
+			// the untimed WaitForExit: a background child the helper left behind can hold the pipe open for as
+			// long as it runs, and this wait happens inside the blocker's and the controller's locks.
+			_ = startupErrors.WaitForEndOfInput(ExitDrainTimeout);
 			int exitCode = process.ExitCode;
 			string errorOutput = startupErrors.Stop();
 			process.Dispose();
@@ -180,6 +192,7 @@ public sealed class ChildProcessHold : IDisposable
 
 		private readonly Lock gate = new();
 		private readonly LinkedList<string> lines = new();
+		private readonly TaskCompletionSource endOfInput = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		private int length;
 		private bool stopped;
 
@@ -189,6 +202,12 @@ public sealed class ChildProcessHold : IDisposable
 		/// <param name="line">The line, or <see langword="null"/> at end of input.</param>
 		public void Add(string? line)
 		{
+			if (line is null)
+			{
+				_ = endOfInput.TrySetResult();
+				return;
+			}
+
 			if (string.IsNullOrWhiteSpace(line))
 			{
 				return;
@@ -219,6 +238,13 @@ public sealed class ChildProcessHold : IDisposable
 				}
 			}
 		}
+
+		/// <summary>
+		/// Waits for standard error to reach end of input, up to a deadline.
+		/// </summary>
+		/// <param name="timeout">The longest time to wait.</param>
+		/// <returns><see langword="true"/> when end of input arrived; <see langword="false"/> when the deadline passed first.</returns>
+		public bool WaitForEndOfInput(TimeSpan timeout) => endOfInput.Task.Wait(timeout);
 
 		/// <summary>
 		/// Stops recording and returns what was recorded.

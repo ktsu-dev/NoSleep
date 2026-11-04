@@ -107,6 +107,29 @@ public class ChildProcessHoldTests
 	}
 
 	[TestMethod]
+	public void Start_WhenTheHelperExitsLeavingAChildOnItsStandardError_ThrowsWithoutWaitingForTheChild()
+	{
+		if (!IsUnix)
+		{
+			Assert.Inconclusive("The helper paths used by this test only exist on Unix.");
+			return;
+		}
+
+		// The background sleep inherits the helper's standard error, so the pipe stays open for 20 s after the
+		// helper itself has exited (#43).
+		const string Script = "echo the-real-reason >&2; sleep 20 & exit 1";
+
+		Stopwatch stopwatch = Stopwatch.StartNew();
+		SleepBlockException exception = Assert.ThrowsExactly<SleepBlockException>(
+			() => ChildProcessHold.Start(ImmediateExitHelper, ["-c", Script]));
+		stopwatch.Stop();
+
+		StringAssert.Contains(exception.Message, "exited immediately with code 1", StringComparison.Ordinal);
+		StringAssert.Contains(exception.Message, "the-real-reason", StringComparison.Ordinal);
+		Assert.IsLessThan(TimeSpan.FromSeconds(5), stopwatch.Elapsed, "Start should not wait for the helper's background child");
+	}
+
+	[TestMethod]
 	public void Start_WithAMissingHelper_Throws()
 	{
 		SleepBlockException exception = Assert.ThrowsExactly<SleepBlockException>(
