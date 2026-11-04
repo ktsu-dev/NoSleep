@@ -90,10 +90,25 @@ public static class ExecutableLocator
 			return true;
 		}
 
+		return HasExecuteBit(candidate, File.GetUnixFileMode);
+	}
+
+	/// <summary>
+	/// Reports whether the file's mode, as <paramref name="readMode"/> reads it, grants execute to anyone.
+	/// </summary>
+	/// <param name="candidate">The file to ask about.</param>
+	/// <param name="readMode">Reads the file's Unix mode; <see cref="File.GetUnixFileMode(string)"/> in production.</param>
+	/// <returns><see langword="true"/> when any execute bit is set; <see langword="false"/> when none is, or the mode cannot be read.</returns>
+	/// <remarks>
+	/// The mode reader is a parameter so the decision, including what a file that vanishes or cannot be read
+	/// means, is covered on every platform rather than only where the bit exists.
+	/// </remarks>
+	internal static bool HasExecuteBit(string candidate, Func<string, UnixFileMode> readMode)
+	{
 		try
 		{
 			const UnixFileMode anyExecute = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
-			return (File.GetUnixFileMode(candidate) & anyExecute) != 0;
+			return (readMode(candidate) & anyExecute) != 0;
 		}
 		catch (IOException)
 		{

@@ -116,6 +116,45 @@ public class PlatformIntegrationTests
 	}
 
 	[TestMethod]
+	public void Find_ReturnsAnExecutableMatchOnTheGivenPath()
+	{
+		string command = OperatingSystem.IsWindows() ? "nosleep-test-helper.exe" : "nosleep-test-helper";
+		string root = Directory.CreateTempSubdirectory("nosleep-path-").FullName;
+
+		try
+		{
+			string helper = Path.Join(root, command);
+			File.WriteAllText(helper, "#!/bin/sh\n");
+			if (!OperatingSystem.IsWindows())
+			{
+				File.SetUnixFileMode(helper, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+			}
+
+			Assert.AreEqual(helper, ExecutableLocator.Find(command, root));
+		}
+		finally
+		{
+			Directory.Delete(root, recursive: true);
+		}
+	}
+
+	[TestMethod]
+	[DataRow(UnixFileMode.UserExecute, true)]
+	[DataRow(UnixFileMode.GroupExecute, true)]
+	[DataRow(UnixFileMode.OtherExecute, true)]
+	[DataRow(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead, false)]
+	[DataRow(UnixFileMode.None, false)]
+	public void HasExecuteBit_IsTrueOnlyWhenSomeoneMayExecute(UnixFileMode mode, bool expected) =>
+		Assert.AreEqual(expected, ExecutableLocator.HasExecuteBit("helper", _ => mode));
+
+	[TestMethod]
+	public void HasExecuteBit_IsFalseWhenTheModeCannotBeRead()
+	{
+		Assert.IsFalse(ExecutableLocator.HasExecuteBit("helper", _ => throw new FileNotFoundException("gone")));
+		Assert.IsFalse(ExecutableLocator.HasExecuteBit("helper", _ => throw new UnauthorizedAccessException("denied")));
+	}
+
+	[TestMethod]
 	[DataRow("")]
 	[DataRow("   ")]
 	public void Find_WithABlankName_Throws(string name) =>
