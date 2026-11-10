@@ -2,6 +2,7 @@
 
 Changes since v1.1.0:
 
+- Go inactive when the platform refuses a replacement inhibitor (#48) (matt-edmondson)
 - Skip a non-executable PATH match when looking up a helper [patch] (#35) (matt-edmondson)
 - Refuse an Acquire that was queued behind Dispose [patch] (#36) (matt-edmondson)
 - Read and replace the request under one lock in SetKeepDisplayAwake [minor] (#42) (matt-edmondson)
