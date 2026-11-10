@@ -3,6 +3,7 @@
 namespace ktsu.NoSleep;
 
 using System;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using ktsu.NoSleep.Contracts;
 
@@ -163,12 +164,17 @@ public sealed class KeepAwakeController : IDisposable
 	/// <paramref name="update"/> is <see langword="null"/>, or returned <see langword="null"/>.
 	/// </exception>
 	/// <exception cref="ObjectDisposedException">The controller has been disposed.</exception>
-	/// <exception cref="SleepBlockException">The platform refused the replacement inhibitor.</exception>
+	/// <exception cref="SleepBlockException">
+	/// The platform refused the replacement inhibitor. The controller is then inactive, since the inhibitor it
+	/// held was dropped to make way for the replacement, and it keeps the request in force before the call.
+	/// <see cref="StateChanged"/> is raised before the exception is thrown.
+	/// </exception>
 	public void SetRequest(Func<SleepBlockRequest, SleepBlockRequest> update)
 	{
 		Ensure.NotNull(update);
 
 		KeepAwakeStateChangedEventArgs change;
+		ExceptionDispatchInfo? failure = null;
 
 		lock (gate)
 		{
@@ -182,17 +188,33 @@ public sealed class KeepAwakeController : IDisposable
 				return;
 			}
 
-			request = newRequest;
-
 			if (isActive)
 			{
-				blocker.Acquire(newRequest);
+				try
+				{
+					blocker.Acquire(newRequest);
+				}
+				catch (SleepBlockException ex)
+				{
+					// Every blocker drops the inhibitor it held before taking the replacement, so a refusal
+					// leaves nothing held. Say so, rather than claim to be on while the machine is free to
+					// sleep, and keep the request that was last held successfully.
+					isActive = false;
+					blocker.Release();
+					failure = ExceptionDispatchInfo.Capture(ex);
+				}
 			}
 
-			change = new KeepAwakeStateChangedEventArgs(isActive, newRequest);
+			if (failure is null)
+			{
+				request = newRequest;
+			}
+
+			change = new KeepAwakeStateChangedEventArgs(isActive, request);
 		}
 
 		StateChanged?.Invoke(this, change);
+		failure?.Throw();
 	}
 
 	/// <summary>

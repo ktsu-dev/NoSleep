@@ -292,6 +292,43 @@ public class KeepAwakeControllerTests
 	}
 
 	[TestMethod]
+	public void SetKeepDisplayAwake_WhenThePlatformRefusesWhileActive_GoesInactiveAndKeepsTheHeldRequest()
+	{
+		using FakeSleepBlocker blocker = new();
+		using KeepAwakeController controller = new(blocker);
+		controller.Enable();
+
+		List<KeepAwakeStateChangedEventArgs> changes = [];
+		controller.StateChanged += (_, args) => changes.Add(args);
+		blocker.AcquireFailure = new SleepBlockException("refused");
+
+		Assert.ThrowsExactly<SleepBlockException>(() => controller.SetKeepDisplayAwake(true));
+
+		Assert.IsFalse(blocker.IsBlocking);
+		Assert.AreEqual(blocker.IsBlocking, controller.IsActive, "The controller must not claim an inhibitor the platform dropped");
+		Assert.IsFalse(controller.KeepDisplayAwake, "The request should stay the one last held successfully");
+		Assert.AreEqual(1, changes.Count, "The tray needs an event to re-read the state");
+		Assert.IsFalse(changes[0].IsActive);
+		Assert.IsFalse(changes[0].Request.KeepDisplayAwake);
+	}
+
+	[TestMethod]
+	public void SetRequest_WhenThePlatformRefusesWhileActive_CanBeEnabledAgain()
+	{
+		using FakeSleepBlocker blocker = new();
+		using KeepAwakeController controller = new(blocker);
+		controller.Enable();
+		blocker.AcquireFailure = new SleepBlockException("refused");
+
+		Assert.ThrowsExactly<SleepBlockException>(() => controller.SetRequest(current => current with { Reason = "Rendering" }));
+		blocker.AcquireFailure = null;
+		controller.Enable();
+
+		Assert.IsTrue(controller.IsActive);
+		Assert.IsTrue(blocker.IsBlocking, "Enable must not be a no-op after a refused replacement");
+	}
+
+	[TestMethod]
 	public void Constructor_WithNullBlocker_Throws() =>
 		Assert.ThrowsExactly<ArgumentNullException>(() => new KeepAwakeController(null!));
 

@@ -56,6 +56,9 @@ internal sealed class FakeSleepBlocker : ISleepBlocker
 	{
 		if (AcquireFailure is not null)
 		{
+			// Like every real blocker: the inhibitor already held is dropped before the replacement is taken,
+			// so a refused replacement leaves nothing held.
+			IsBlocking = false;
 			throw AcquireFailure;
 		}
 
