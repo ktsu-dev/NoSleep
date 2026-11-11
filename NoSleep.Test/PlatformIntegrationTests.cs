@@ -116,6 +116,60 @@ public class PlatformIntegrationTests
 	}
 
 	[TestMethod]
+	public void Find_SkipsAMatchThisProcessMayNotExecute()
+	{
+		if (OperatingSystem.IsWindows())
+		{
+			Assert.Inconclusive("Windows has no execute bit, so every match there counts as executable.");
+			return;
+		}
+
+		if (Environment.IsPrivilegedProcess)
+		{
+			Assert.Inconclusive("Root may execute a file with any execute bit set, so the shadowing file cannot be built.");
+			return;
+		}
+
+		const string command = "nosleep-test-helper";
+		string root = Directory.CreateTempSubdirectory("nosleep-path-").FullName;
+
+		try
+		{
+			string shadow = Directory.CreateDirectory(Path.Join(root, "shadow")).FullName;
+			string real = Directory.CreateDirectory(Path.Join(root, "real")).FullName;
+
+			// Group may execute, but the owner - this process - may not, and the kernel checks the owner class
+			// first (#44).
+			string ownerMayNotExecute = Path.Join(shadow, command);
+			File.WriteAllText(ownerMayNotExecute, "#!/bin/sh\n");
+			File.SetUnixFileMode(ownerMayNotExecute, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.GroupExecute);
+
+			string helper = Path.Join(real, command);
+			File.WriteAllText(helper, "#!/bin/sh\n");
+			File.SetUnixFileMode(helper, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+			Assert.AreEqual(helper, ExecutableLocator.Find(command, string.Join(Path.PathSeparator, shadow, real)));
+			Assert.IsNull(ExecutableLocator.Find(command, shadow));
+		}
+		finally
+		{
+			Directory.Delete(root, recursive: true);
+		}
+	}
+
+	[TestMethod]
+	public void Find_ReturnsTheFirstMatchTheCheckAccepts()
+	{
+		string first = Path.Join("first", "helper");
+		string second = Path.Join("second", "helper");
+		string path = string.Join(Path.PathSeparator, "first", "second");
+
+		Assert.AreEqual(second, ExecutableLocator.Find("helper", path, candidate => candidate == second));
+		Assert.AreEqual(first, ExecutableLocator.Find("helper", path, _ => true));
+		Assert.IsNull(ExecutableLocator.Find("helper", path, _ => false));
+	}
+
+	[TestMethod]
 	public void Find_ReturnsAnExecutableMatchOnTheGivenPath()
 	{
 		string command = OperatingSystem.IsWindows() ? "nosleep-test-helper.exe" : "nosleep-test-helper";
