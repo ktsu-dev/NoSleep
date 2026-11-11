@@ -1,7 +1,6 @@
-## v1.2.1 (patch)
+## v1.2.2-pre.1 (prerelease)
 
-Changes since v1.2.0:
+Changes since v1.2.1:
 
-- Bound the stderr drain when an inhibitor helper exits at startup [patch] (#45) (matt-edmondson)
-- Ask access(X_OK) whether this process may run a PATH match [patch] (#46) (matt-edmondson)
+- Bump the ktsu group with 10 updates (dependabot[bot])
 
