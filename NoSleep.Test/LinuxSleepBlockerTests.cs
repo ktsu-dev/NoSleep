@@ -87,6 +87,66 @@ public class LinuxSleepBlockerTests
 		}
 	}
 
+	/// <summary>
+	/// The display hold must end when its standard input closes, as the systemd hold does. With
+	/// <c>--inhibit-only</c>, <c>gnome-session-inhibit</c> runs no command and never reads standard input, so it
+	/// outlived a killed NoSleep and every release waited out the graceful-exit timeout (ktsu-dev/NoSleep#11).
+	/// </summary>
+	[TestMethod]
+	[SupportedOSPlatform("linux")]
+	public void Release_GnomeSessionHold_EndsOnEndOfInputWithoutWaitingOutTheTimeout()
+	{
+		if (!OperatingSystem.IsLinux())
+		{
+			Assert.Inconclusive("LinuxSleepBlocker only runs on Linux.");
+			return;
+		}
+
+		string root = Directory.CreateTempSubdirectory("nosleep-linux-").FullName;
+
+		try
+		{
+			string argsFile = Path.Join(root, "args");
+			string helper = Path.Join(root, "gnome-session-inhibit");
+
+			// Behaves as the real gnome-session-inhibit does: with --inhibit-only it waits forever and ignores
+			// standard input; otherwise it runs COMMAND as a child that inherits standard input, and exits with it.
+			File.WriteAllText(helper,
+				$"""
+				#!/bin/sh
+				printf '%s\n' "$@" > '{argsFile}'
+				while [ $# -gt 0 ]; do
+					case "$1" in
+						--inhibit|--reason|--app-id) shift 2 ;;
+						--inhibit-only) exec sleep 3600 ;;
+						--*) shift ;;
+						*) break ;;
+					esac
+				done
+				"$@"
+				""".ReplaceLineEndings("\n"));
+			File.SetUnixFileMode(helper, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+			using LinuxSleepBlocker blocker = new(null, helper);
+			blocker.Acquire(SleepBlockRequest.SystemAndDisplay);
+			Assert.IsTrue(blocker.IsBlocking, "The gnome-session hold should be running");
+
+			Stopwatch release = Stopwatch.StartNew();
+			blocker.Release();
+			release.Stop();
+
+			Assert.IsLessThan(TimeSpan.FromSeconds(1.5), release.Elapsed, "The hold should end on end of input, before the 2 s graceful-exit timeout");
+
+			string[] arguments = File.ReadAllLines(argsFile);
+			Assert.DoesNotContain("--inhibit-only", arguments, "--inhibit-only runs no command, so nothing reads standard input");
+			Assert.AreEqual("cat", arguments[^1], "The inhibited command should be cat, which exits on end of input");
+		}
+		finally
+		{
+			Directory.Delete(root, recursive: true);
+		}
+	}
+
 	[SupportedOSPlatform("linux")]
 	private static ObjectDisposedException? TryAcquire(LinuxSleepBlocker blocker)
 	{

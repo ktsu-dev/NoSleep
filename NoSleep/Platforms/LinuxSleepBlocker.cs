@@ -160,9 +160,15 @@ public sealed class LinuxSleepBlocker : ISleepBlocker
 					[
 						"--inhibit",
 						string.Join(":", sessionInhibits),
-						"--inhibit-only",
 						"--reason",
 						request.Reason,
+
+						// Not --inhibit-only: that runs no command and never reads standard input, so the helper
+						// outlived a killed NoSleep and every release waited out the graceful-exit timeout
+						// (ktsu-dev/NoSleep#11). gnome-session-inhibit holds the inhibitor while COMMAND runs and
+						// forks it with standard input inherited, so cat ends the hold on end of input, as for
+						// systemd-inhibit above.
+						"cat",
 					]));
 				}
 			}
