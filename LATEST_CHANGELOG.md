@@ -1,6 +1,7 @@
-## v1.2.2-pre.2 (prerelease)
+## v1.2.2 (patch)
 
-Changes since v1.2.2-pre.1:
+Changes since v1.2.1:
 
-- Bump MSTest.Sdk from 4.5.2 to 4.5.3 (dependabot[bot])
+- Run cat under gnome-session-inhibit so the display hold ends with NoSleep (#53) (matt-edmondson)
+- Start the Linux inhibitor helper in its own session so a handled Ctrl+C keeps the lock [patch] (#55) (matt-edmondson)
 
