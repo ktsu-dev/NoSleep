@@ -22,6 +22,13 @@ using System.Threading.Tasks;
 /// the lock goes with it. Without that, an orphaned <c>systemd-inhibit</c> would keep the machine awake with
 /// nothing left to turn it off.
 /// </para>
+/// <para>
+/// On Linux the helper is started through <c>setsid</c>, in a session and process group of its own. A Ctrl+C
+/// in the terminal sends SIGINT to the whole foreground process group, so a helper left in NoSleep's group
+/// would die, and the lock with it, even when the host handles the Ctrl+C and keeps running. The pipe still
+/// ends the helper when NoSleep itself exits. Where <c>setsid</c> is not installed, the helper is started
+/// directly.
+/// </para>
 /// </remarks>
 public sealed class ChildProcessHold : IDisposable
 {
@@ -37,6 +44,17 @@ public sealed class ChildProcessHold : IDisposable
 	/// of input without a deadline would wait for as long as the child runs.
 	/// </remarks>
 	private static readonly TimeSpan ExitDrainTimeout = TimeSpan.FromSeconds(1);
+
+	/// <summary>
+	/// The util-linux command that runs a program in a new session.
+	/// </summary>
+	/// <remarks>
+	/// It is not passed <c>--fork</c> or <c>--wait</c>. A process that <see cref="Process"/> starts is never a
+	/// process group leader, so <c>setsid</c> creates the session itself and then replaces itself with the
+	/// helper. The helper therefore keeps the process id that <see cref="Process"/> reports, and that
+	/// <see cref="Dispose"/> waits for and kills.
+	/// </remarks>
+	private const string SetSid = "setsid";
 
 	private readonly Process process;
 	private bool disposed;
@@ -69,7 +87,11 @@ public sealed class ChildProcessHold : IDisposable
 		ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
 		Ensure.NotNull(arguments);
 
-		ProcessStartInfo startInfo = new(fileName)
+		// A missing helper is started directly, so the failure says it could not be started rather than
+		// surfacing as setsid's "failed to execute" exit.
+		string? setSidPath = OperatingSystem.IsLinux() && File.Exists(fileName) ? ExecutableLocator.Find(SetSid) : null;
+
+		ProcessStartInfo startInfo = new(setSidPath ?? fileName)
 		{
 			UseShellExecute = false,
 			CreateNoWindow = true,
@@ -77,6 +99,11 @@ public sealed class ChildProcessHold : IDisposable
 			RedirectStandardOutput = true,
 			RedirectStandardError = true,
 		};
+
+		if (setSidPath is not null)
+		{
+			startInfo.ArgumentList.Add(fileName);
+		}
 
 		foreach (string argument in arguments)
 		{

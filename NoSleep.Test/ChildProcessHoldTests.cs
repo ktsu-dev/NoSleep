@@ -4,6 +4,8 @@ namespace ktsu.NoSleep.Test;
 
 using System;
 using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using ktsu.NoSleep.Platforms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -130,6 +132,35 @@ public class ChildProcessHoldTests
 	}
 
 	[TestMethod]
+	public void Start_OnLinux_PutsTheHelperOutsideTheHostsProcessGroup()
+	{
+		if (!OperatingSystem.IsLinux())
+		{
+			Assert.Inconclusive("Only the Linux blocker uses helper processes.");
+			return;
+		}
+
+		if (ExecutableLocator.Find("setsid") is null)
+		{
+			Assert.Inconclusive("setsid is not installed, so the helper is started in the host's process group.");
+			return;
+		}
+
+		(int hostGroup, int hostSession) = ReadProcessGroupAndSession(Environment.ProcessId);
+
+		using ChildProcessHold hold = ChildProcessHold.Start(BlockingHelper, []);
+
+		// A Ctrl+C reaches every process in the terminal's foreground process group. The helper must not be one
+		// of them, or it dies, and the lock with it, even when the host handles the Ctrl+C and keeps running.
+		(int helperGroup, int helperSession) = ReadProcessGroupAndSession(hold.ProcessId);
+		Assert.AreNotEqual(hostGroup, helperGroup, "The helper should not share the host's process group");
+		Assert.AreNotEqual(hostSession, helperSession, "The helper should not share the host's session");
+		Assert.AreEqual(hold.ProcessId, helperGroup, "The helper should lead its own process group");
+		Assert.AreEqual("cat", File.ReadAllText($"/proc/{hold.ProcessId}/comm").Trim(),
+			"setsid should have replaced itself with the helper, keeping the process id the hold reports");
+	}
+
+	[TestMethod]
 	public void Start_WithAMissingHelper_Throws()
 	{
 		SleepBlockException exception = Assert.ThrowsExactly<SleepBlockException>(
@@ -156,6 +187,20 @@ public class ChildProcessHoldTests
 	[TestMethod]
 	public void Start_WithNullArguments_Throws() =>
 		Assert.ThrowsExactly<ArgumentNullException>(() => ChildProcessHold.Start(BlockingHelper, null!));
+
+	/// <summary>
+	/// Reads a process's process group and session ids from <c>/proc</c>.
+	/// </summary>
+	/// <param name="processId">The process to read.</param>
+	/// <returns>The process group id and the session id.</returns>
+	private static (int Group, int Session) ReadProcessGroupAndSession(int processId)
+	{
+		// The command name in field 2 is parenthesised and may contain spaces, so the fields after it are found
+		// from the last ')'. They are: state, parent id, process group, session.
+		string stat = File.ReadAllText($"/proc/{processId}/stat");
+		string[] fields = stat[(stat.LastIndexOf(')') + 2)..].Split(' ');
+		return (int.Parse(fields[2], CultureInfo.InvariantCulture), int.Parse(fields[3], CultureInfo.InvariantCulture));
+	}
 
 	private static bool IsRunning(int processId)
 	{
