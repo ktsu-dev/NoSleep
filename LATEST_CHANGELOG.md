@@ -1,7 +1,6 @@
-## v1.2.2 (patch)
+## v1.2.3-pre.1 (prerelease)
 
-Changes since v1.2.1:
+Changes since v1.2.2:
 
-- Run cat under gnome-session-inhibit so the display hold ends with NoSleep (#53) (matt-edmondson)
-- Start the Linux inhibitor helper in its own session so a handled Ctrl+C keeps the lock [patch] (#55) (matt-edmondson)
+- Bump the ktsu group with 10 updates (dependabot[bot])
 
