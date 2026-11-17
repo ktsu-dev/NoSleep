@@ -8,7 +8,7 @@
 [![NuGet Downloads](https://img.shields.io/nuget/dt/ktsu.NoSleep?label=Downloads&logo=nuget)](https://nuget.org/packages/ktsu.NoSleep)
 [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/ktsu-dev/NoSleep?label=Commits&logo=github)](https://github.com/ktsu-dev/NoSleep/commits/main)
 [![GitHub contributors](https://img.shields.io/github/contributors/ktsu-dev/NoSleep?label=Contributors&logo=github)](https://github.com/ktsu-dev/NoSleep/graphs/contributors)
-[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/ktsu-dev/NoSleep/dotnet.yml?label=Build&logo=github)](https://github.com/ktsu-dev/NoSleep/actions)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/ktsu-dev/NoSleep/ci.yml?label=Build&logo=github)](https://github.com/ktsu-dev/NoSleep/actions)
 
 ## Introduction
 

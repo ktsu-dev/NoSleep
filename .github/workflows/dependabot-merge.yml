@@ -15,7 +15,7 @@ name: Dependabot auto-merge
 on:
   workflow_run:
     workflows:
-      - ".NET Workflow"
+      - "CI"
     types: [completed]
 
 permissions:
